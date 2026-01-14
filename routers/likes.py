@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -123,7 +122,7 @@ async def get_like_status(
     )
 
 
-@router.get("/me", response_model=List[PostAllPostResponse], status_code=status.HTTP_200_OK)
+@router.get("/me", response_model=list[PostAllPostResponse], status_code=status.HTTP_200_OK)
 async def get_my_liked_posts(
         current_user: dict = Depends(auth.get_current_user)
 ):

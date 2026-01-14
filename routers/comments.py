@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import List
 
 from fastapi import APIRouter, HTTPException, Depends, status
 
@@ -52,7 +51,7 @@ async def create_comment(
     )
 
 
-@router.get("/", response_model=List[CommentResponse], status_code=status.HTTP_200_OK)
+@router.get("/", response_model=list[CommentResponse], status_code=status.HTTP_200_OK)
 async def get_comments_by_post(post_id: int):
     post = data.find_by_id("posts.json", post_id)
     if not post:
@@ -140,7 +139,7 @@ async def update_comment(
         created_at=updated_comment["created_at"],
         updated_at=updated_comment["updated_at"]
     )
-@router.get("/me", response_model=List[CommentResponse], status_code=status.HTTP_200_OK)
+@router.get("/me", response_model=list[CommentResponse], status_code=status.HTTP_200_OK)
 async def get_my_comments(current_user: dict = Depends(auth.get_current_user)):
     comments = data.load_data("comments.json")
     my_comments = [c for c in comments if c.get("user_id") == current_user["id"]]

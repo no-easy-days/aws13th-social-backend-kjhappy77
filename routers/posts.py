@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -51,7 +51,7 @@ async def create_new_post(
         updated_at=new_post["updated_at"]
     )
 
-@router.get("/", response_model=List[PostAllPostResponse], status_code=status.HTTP_200_OK)
+@router.get("/", response_model=list[PostAllPostResponse], status_code=status.HTTP_200_OK)
 async def get_all_posts(sort: Optional[str] = "latest"):
     posts = data.load_data("posts.json")
 
@@ -80,7 +80,7 @@ async def get_all_posts(sort: Optional[str] = "latest"):
     ]
 
 
-@router.get("/search", response_model=List[PostAllPostResponse], status_code=status.HTTP_200_OK)
+@router.get("/search", response_model=list[PostAllPostResponse], status_code=status.HTTP_200_OK)
 async def search_posts(q: Optional[str] = None, sort: Optional[str] = "latest"):
     if not q or len(q.strip()) == 0:
         raise HTTPException(

@@ -1,5 +1,5 @@
 import json
-from typing import Any, List, Optional
+from typing import Any, Optional
 from pathlib import Path
 
 # 프로젝트 루트 디렉토리 경로
@@ -13,7 +13,7 @@ def ensure_data_dir():
         DATA_DIR.mkdir(exist_ok=True)
 
 
-def load_data(filename: str) -> List[Any]:
+def load_data(filename: str) -> list[Any]:
     """JSON 파일에서 데이터 로드"""
     ensure_data_dir()
     filepath = DATA_DIR / filename
@@ -33,7 +33,7 @@ def load_data(filename: str) -> List[Any]:
         return []
 
 
-def save_data(data: List[Any], filename: str) -> bool:
+def save_data(data: list[Any], filename: str) -> bool:
     """JSON 파일에 데이터 저장"""
     ensure_data_dir()
     filepath = DATA_DIR / filename
