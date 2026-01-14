@@ -4,8 +4,9 @@ JSON 파일 읽기/쓰기 유틸리티
 """
 import json
 import os
-from typing import Any, Callable
-from filelock import FileLock
+from typing import Any
+from collections.abc import Callable
+from filelock import FileLock, Timeout
 
 
 class JsonFileHandler:
@@ -21,13 +22,22 @@ class JsonFileHandler:
         self._ensure_file_exists()
     
     def _ensure_file_exists(self) -> None:
-        """파일이 존재하지 않으면 생성"""
+        """파일이 존재하지 않으면 안전하게 생성"""
         dir_path = os.path.dirname(self.file_path)
-        if dir_path:  # 빈 문자열이 아닌 경우에만 디렉토리 생성
+        if dir_path:
             os.makedirs(dir_path, exist_ok=True)
-        if not os.path.exists(self.file_path):
-            with open(self.file_path, 'w', encoding='utf-8') as f:
-                json.dump([], f)
+            
+        lock = FileLock(self.lock_path, timeout=10)
+        try:
+            with lock:
+                if not os.path.exists(self.file_path):
+                    with open(self.file_path, 'w', encoding='utf-8') as f:
+                        json.dump([], f)
+        except Timeout:
+            # 10초 동안 다른 프로세스가 파일을 잡고 놓지 않을 때 발생
+            print(f"로그: {self.lock_path}에 대한 락을 획득하지 못했습니다.")
+            raise  # 혹은 시스템 상황에 맞는 예외 처리
+        
     
     def read(self) -> list[dict[str, Any]]:
         """

@@ -6,7 +6,7 @@ ID 생성 유틸리티
 import json
 import os
 from typing import Literal
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 
 EntityType = Literal["user", "post", "comment"]
@@ -35,14 +35,19 @@ class IDCounter:
         내부 초기화 로직을 숨김
         """
         os.makedirs(self.data_dir, exist_ok=True)
-        if not os.path.exists(self.counters_file):
-            initial_counters = {
-                "user_id": 0,
-                "post_id": 0,
-                "comment_id": 0
-            }
-            with open(self.counters_file, 'w', encoding='utf-8') as f:
-                json.dump(initial_counters, f, indent=2)
+        lock = FileLock(self.lock_path, timeout=10)
+        try:
+            with lock:
+                if not os.path.exists(self.counters_file):
+                    initial_counters = {
+                        "user_id": 0,
+                        "post_id": 0,
+                        "comment_id": 0
+                    }
+                    with open(self.counters_file, 'w', encoding='utf-8') as f:
+                        json.dump(initial_counters, f, indent=2)
+        except Timeout:
+            raise TimeoutError("ID 카운터 파일 접근 권한을 얻지 못했습니다.")
     
     def get_next_id(self, entity_type: EntityType) -> int:
         """

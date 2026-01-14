@@ -1,7 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import cache
-from typing import Optional
-
 
 class Settings(BaseSettings):
     """애플리케이션 설정"""

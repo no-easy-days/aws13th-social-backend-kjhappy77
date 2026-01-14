@@ -1,4 +1,6 @@
 """
 FastAPI Community
 """
-__version__ = "1.0.0"
+from app.core.config import get_settings
+
+__version__ = get_settings().VERSION
