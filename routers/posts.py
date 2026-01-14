@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -49,3 +50,27 @@ async def create_new_post(
         created_at=new_post["created_at"],
         updated_at=new_post["updated_at"]
     )
+
+@router.get("/", response_model=List[PostResponse], status_code=status.HTTP_200_OK)
+async def get_all_posts():
+
+    posts = data.load_data("posts.json")
+
+    posts.sort(key=lambda x: x.get("id", 0), reverse=True)
+
+    post_responses = [
+        PostResponse(
+            id=post["id"],
+            user_id=post["user_id"],
+            author_nickname=post.get("author_nickname", "탈퇴한 사용자"),
+            title=post["title"],
+            view_count=post.get("view_count", 0),
+            like_count=post.get("like_count", 0),
+            comment_count=post.get("comment_count", 0),
+            created_at=post["created_at"],
+            updated_at=post["updated_at"]
+        )
+        for post in posts
+    ]
+
+    return post_responses
