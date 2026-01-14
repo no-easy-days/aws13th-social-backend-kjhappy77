@@ -45,6 +45,16 @@ async def create_comment(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="댓글 데이터 저장 실패"
         )
+
+    new_comment_count = comment_post.get("comment_count", 0) + 1
+    count_updated = data.update_by_id("posts.json", post_id, {"comment_count": new_comment_count})
+    if not count_updated:
+        data.delete_by_id("comments.json", comment_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="댓글 카운트 업데이트 실패"
+        )
+
     return CommentResponse(
         id=comment_id,
         post_id=post_id,
@@ -101,7 +111,26 @@ async def delete_comment(
             detail="댓글 작성자만 삭제 가능"
         )
 
-    data.delete_by_id("comments.json", comment_id)
+    post = data.find_by_id("posts.json", post_id)
+
+    deleted = data.delete_by_id("comments.json", comment_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="댓글 삭제 실패"
+        )
+
+    if post:
+        new_comment_count = max(post.get("comment_count", 0) - 1, 0)
+        count_updated = data.update_by_id("posts.json", post_id, {"comment_count": new_comment_count})
+        if not count_updated:
+            comments = data.load_data("comments.json")
+            comments.append(comment)
+            data.save_data(comments, "comments.json")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="댓글 카운트 업데이트 실패"
+            )
 
 
 @router.patch("/{comment_id}", response_model=CommentResponse, status_code=status.HTTP_200_OK)

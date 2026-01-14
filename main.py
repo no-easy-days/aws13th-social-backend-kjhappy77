@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routers import comments
 from routers.users import router as users_router
 from routers.posts import router as posts_router
+from routers.comments import router as comments_router, my_comments_router
 from routers.likes import router as likes_router
 
 load_dotenv()
@@ -25,11 +25,17 @@ app.add_middleware(
 )
 
 # 라우터 등록
+# 사용자 관련
 app.include_router(users_router)
+
+# 게시글 관련
 app.include_router(posts_router)
 
-app.include_router(comments.router)
-app.include_router(comments.my_comments_router)
+# 댓글 관련
+app.include_router(comments_router)
+app.include_router(my_comments_router)
+
+# 좋아요 관련
 app.include_router(likes_router)
 
 
