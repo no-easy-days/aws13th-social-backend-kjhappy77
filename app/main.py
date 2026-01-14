@@ -13,7 +13,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="클라우드 커뮤니티 REST API",
-    version="1.0.0",
+    version=settings.VERSION,
     docs_url="/docs",
 )
 
@@ -40,6 +40,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def root():
     return {
         "message": "Welcome to FastAPI Community API",
-        "version": "1.0.0",
+        "version": settings.VERSION,
         "docs": "/docs"
     }
