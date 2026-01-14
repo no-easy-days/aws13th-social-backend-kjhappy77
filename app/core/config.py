@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from functools import lru_cache
+from functools import cache
 from typing import Optional
 
 
@@ -31,7 +31,6 @@ class Settings(BaseSettings):
         extra="ignore"         # 정의되지 않은 환경변수가 있어도 에러내지 않고 무시
     )
 
-# 싱클톤 패턴
-@lru_cache()
+@cache
 def get_settings() -> Settings:
     return Settings()
