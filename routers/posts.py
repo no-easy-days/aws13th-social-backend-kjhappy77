@@ -3,7 +3,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from schemas.post import PostResponse, PostCreate
+from schemas.post import PostResponse, PostCreate, PostAllResponse
 from utils import auth, data
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -51,7 +51,7 @@ async def create_new_post(
         updated_at=new_post["updated_at"]
     )
 
-@router.get("/", response_model=List[PostResponse], status_code=status.HTTP_200_OK)
+@router.get("/", response_model=List[PostAllResponse], status_code=status.HTTP_200_OK)
 async def get_all_posts():
 
     posts = data.load_data("posts.json")
@@ -59,7 +59,7 @@ async def get_all_posts():
     posts.sort(key=lambda x: x.get("id", 0), reverse=True)
 
     post_responses = [
-        PostResponse(
+        PostAllResponse(
             id=post["id"],
             user_id=post["user_id"],
             author_nickname=post.get("author_nickname", "탈퇴한 사용자"),
@@ -74,3 +74,4 @@ async def get_all_posts():
     ]
 
     return post_responses
+

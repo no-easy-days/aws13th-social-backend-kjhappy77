@@ -23,3 +23,14 @@ class PostResponse(PostBase):
     comment_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+class PostAllPostResponse(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    id: int
+    user_id: int
+    author_nickname: str
+    view_count: int = 0
+    like_count: int = 0
+    comment_count: int = 0
+    created_at: datetime
+    updated_at: datetime
