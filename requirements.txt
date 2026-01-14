@@ -8,8 +8,8 @@ pydantic-settings==2.12.0
 python-dotenv==1.2.1
 
 # Security & Auth
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+python-jose==3.5.0
+passlib==1.7.4
 python-multipart==0.0.21
 
 # Utilities
