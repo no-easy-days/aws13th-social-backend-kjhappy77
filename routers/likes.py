@@ -53,7 +53,14 @@ async def create_like(
         )
 
     new_like_count = post.get("like_count", 0) + 1
-    data.update_by_id("posts.json", like_data.post_id, {"like_count": new_like_count})
+    count_updated = data.update_by_id("posts.json", like_data.post_id, {"like_count": new_like_count})
+
+    if not count_updated:
+        data.delete_by_id("likes.json", like_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="좋아요 카운트 업데이트 실패"
+        )
 
     return LikeStatus(
         is_liked=True,
@@ -86,10 +93,24 @@ async def delete_like(
             detail="좋아요를 누르지 않은 게시글입니다"
         )
 
-    data.delete_by_id("likes.json", existing_like["id"])
+    deleted = data.delete_by_id("likes.json", existing_like["id"])
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="좋아요 삭제 실패"
+        )
 
     new_like_count = max(post.get("like_count", 0) - 1, 0)
-    data.update_by_id("posts.json", post_id, {"like_count": new_like_count})
+    count_updated = data.update_by_id("posts.json", post_id, {"like_count": new_like_count})
+
+    if not count_updated:
+        likes = data.load_data("likes.json")
+        likes.append(existing_like)
+        data.save_data(likes, "likes.json")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="좋아요 카운트 업데이트 실패"
+        )
 
     return LikeStatus(
         is_liked=False,

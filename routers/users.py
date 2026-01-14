@@ -137,6 +137,13 @@ async def delete_account(current_user: dict = Depends(auth.get_current_user)):
     data.save_data(comments, "comments.json")
 
     likes = data.load_data("likes.json")
+
+    user_liked_post_ids = [l["post_id"] for l in likes
+                          if l.get("user_id") == user_id and l.get("post_id") not in user_post_ids]
+    for post in posts:
+        if post["id"] in user_liked_post_ids:
+            post["like_count"] = max(post.get("like_count", 0) - 1, 0)
+
     likes = [l for l in likes
              if l.get("user_id") != user_id and l.get("post_id") not in user_post_ids]
     data.save_data(likes, "likes.json")
