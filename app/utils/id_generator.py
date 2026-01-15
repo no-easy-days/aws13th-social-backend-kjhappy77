@@ -35,7 +35,7 @@ class IDCounter:
         내부 초기화 로직을 숨김
         """
         os.makedirs(self.data_dir, exist_ok=True)
-        lock = FileLock(self.lock_path, timeout=10)
+        lock = FileLock(self.lock_file, timeout=10)
         try:
             with lock:
                 if not os.path.exists(self.counters_file):
