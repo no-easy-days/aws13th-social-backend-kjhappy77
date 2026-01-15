@@ -88,7 +88,7 @@ async def change_comment():
     pass
 
 # 좋아요 등록
-@app.post("posts/{post_id}/likes")
+@app.post("/posts/{post_id}/likes")
 async def post_like():
     pass
 
