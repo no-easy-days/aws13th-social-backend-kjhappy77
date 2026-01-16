@@ -1,16 +1,18 @@
 import re
 from typing import Annotated
-from fastapi import FastAPI, HTTPException, Form, UploadFile, File, Body
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File, Depends, status
 from pydantic import EmailStr
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
-from jose import jwt
+from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError, ExpiredSignatureError
 import os
 from dotenv import load_dotenv
+from fastapi.security import OAuth2PasswordBearer
 
 app = FastAPI()
 #----- 데모용 DB (현재는 임시 리스트) ----------------------------
 demo_db = []
+
 #----- 닉네임 생성  -----------------------------------------
 nickname_pattern = "^[a-zA-Z0-9가-힣].{5,10}$"
 def validate_nickname(nickname: str):
@@ -19,12 +21,14 @@ def validate_nickname(nickname: str):
             status_code=422,
             detail="닉네임은 5~10자 길이를 준수해야하며, 숫자, 영문 소문자, 영문 대문자, 한글을 사용할 수 있습니다. 중복 허용 불가입니다."
         )
+
 #----- user_id 부여 (추후 DB 확장성 고려, 함수 형태로 구현)-------
 user_counter = 0
 def generate_user_id():
     global user_counter
     user_counter += 1
     return f"user_{user_counter}"
+
 #----- 이미지 파일 용량 확인 ----------------------------------
 ALLOWED_TYPES = {"image/jpg", "image/png", "image/tiff", "image/bmp", "image/gif"}
 MAX_FILE_SIZE = 10 * 1024 * 1024 # 10MB
@@ -42,6 +46,7 @@ async def validate_image_size(upload_file):
                 detail="이미지 파일은 10MB를 넘을 수 없습니다. "
             )
     await upload_file.seek(0)
+
 #----- 비밀번호 규칙 -------------------------------------------
 password_pattern = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*+=-]).{5,20}$"
 def validate_password(password: str):
@@ -50,6 +55,7 @@ def validate_password(password: str):
             status_code=422,
             detail="비밀번호는 5~20자 길이를 준수해야하며, 숫자, 영문 소문자, 영문 대문자, 특수 문자가 각각 최소 1개씩 포함되어야 합니다."
         )
+
 #----- 비밀 번호 해싱 from JEFF --------------------------------
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # 1. 비밀번호 해싱
@@ -58,16 +64,49 @@ def hash_password(password: str) -> str:
 # 2. 비밀번호 검증
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
 #----- 로그인 횟수 검증 -----------------------------------------
 login_attempts = {}
 MAX_ATTEMPTS = 5 # 5회 이상 시도 시 429 에러 반환
+
 #----- 액세스 토큰 생성(로그인 메서드) ----------------------------
 load_dotenv() # 환경변수 파일 불러옴
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now() + (expires_delta or timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, os.getenv("SECRET_KEY"), algorithm=os.getenv("ALGORITHM"))
+
+#----- Oauth 2.0 Bearer 선언 & 토큰 디코딩 및 로그인 인증 --------- TODO : 추후 인증 미들웨어로 따로 분리 해야함!!
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+def auth_user_with_token_decoding(token: str = Depends(oauth2_scheme)):
+    user_info = None
+    try:
+        payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
+
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="토큰이 만료되었습니다.")
+
+    except JWTError:
+        raise HTTPException(status_code=401, detail="토큰 인증 정보가 유효하지 않습니다. ")
+
+    user_id: str = payload.get("sub")
+    token_type = payload.get("type", "access")
+
+    if token_type != "access":
+        raise HTTPException(status_code=401, detail="유효한 액세스 토큰이 아닙니다.")
+
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="토큰 인증 정보가 유효하지 않습니다. ")
+
+    for i in demo_db:
+        if i["user_id"] == user_id:
+            user_info = i
+            break
+    if user_info is None:
+        raise HTTPException(status_code=404, detail="일치하는 유저 정보가 없습니다.")
+
+    return user_info
 
 # ----- 첫번째. 회원 가입 메서드 시작
 @app.post("/users")
@@ -106,18 +145,21 @@ async def post_users(
         "email_address": email_address,
         "hashed_password": hashed_password,
         "nickname": nickname,
-        "profile_image_url": profile_image_url
+        "profile_image_url": profile_image_url,
+        "users_created_time" : datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S'),
+        "users_modified_time" : None
     })
     return {
-        "status" : "success",
-        "message" : "회원가입이 정상적으로 처리되었습니다.",
-        "user_id" : user_id,
-        "email_address" : email_address,
-        "nickname" : nickname,
-        "profile_image_url" : profile_image if profile_image else None,
-        "users_created_time" : datetime.now().strftime('%Y.%m.%d - %H:%M:%S')
+        "status": "success",
+        "message": "회원가입이 정상적으로 처리되었습니다.",
+        "data": {
+            "user_id": user_id,
+            "email_address": email_address,
+            "nickname": nickname,
+            "profile_image_url": profile_image_url,
+            "users_created_time": datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
+        }
     }
-
 
 # ----- 두번째. 로그인 메서드 시작
 @app.post("/auth/token")
@@ -131,7 +173,6 @@ async def post_auth_token(
         if i["email_address"] == email_address:
             is_users_email = i
             break
-    print(is_users_email)
     if is_users_email is None:
         raise HTTPException(status_code=401, detail="일치하는 아이디(이메일) 정보가 없습니다.")
     # 2. 이메일은 확인되었고, 로그인 횟수 검증
@@ -146,7 +187,7 @@ async def post_auth_token(
     login_attempts[email_address] = 0
     # 5. 비밀번호 해시값 검증 완료, 액세스 토큰 & 리프레시 토큰 생성
     access_token = create_access_token(
-        data={"sub":is_users_email["user_id"]},
+        data={"sub":is_users_email["user_id"], "type" : "access"},
         expires_delta=timedelta(minutes=int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES')))
     )
     refresh_token = create_access_token(
@@ -156,13 +197,72 @@ async def post_auth_token(
     return {
         "status": "success",
         "message": "로그인에 성공하였습니다.",
-        "user_id": is_users_email["user_id"],
-        "login_time": datetime.now().strftime('%Y.%m.%d - %H:%M:%S'),
-        "token_type": "bearer",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "expires_in": int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES'))*60,
-        "issued_at": datetime.now().strftime('%Y.%m.%d - %H:%M:%S')
+        "data": {
+            "user_id": is_users_email["user_id"],
+            "login_time": datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S'),
+            "token_type": "bearer",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "expires_in": int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES')) * 60,
+            "issued_at": datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
+        }
     }
 
+# ----- 세번째, 내 프로필 조회 메서드 구현
+@app.get("/users/my-page")
+async def get_users_my_page(user : dict = Depends(auth_user_with_token_decoding)):
+    return {
+        "status": "success",
+        "message": "액세스 토큰 및 사용자 인증이 완료되었습니다.",
+        "data": {
+            "user_id": user["user_id"],
+            "email_address" : user["email_address"],
+            "nickname": user["nickname"],
+            "profile_image_url": user["profile_image_url"],
+            "users_created_time": user["users_created_time"],
+            "users_modified_time": user["users_modified_time"]
+        }
+    }
 
+# ----- 네번째, 내 프로필 수정 메서드 구현
+@app.patch("/users/my-page")
+async def patch_users_my_page(
+        nickname : Annotated[str | None, Form()] = None,
+        password : Annotated[str | None, Form()] = None,
+        profile_image : Annotated[UploadFile | None, File()] = None,
+        user : dict = Depends(auth_user_with_token_decoding)
+):
+    # 최소 1개가 요청되었는지 확인
+    if not any([nickname, password, profile_image]):
+        raise HTTPException(status_code=400, detail="닉네임, 비밀번호, 프로필 이미지 중 최소 1개는 선택해야 합니다.")
+    # 1. 닉네임 변경이 요청된 경우 -- 일단 규칙 확인 후 중복 검사 (코드 리뷰에서 pythonic하게 변경)
+    if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in demo_db):
+        raise HTTPException(status_code=409, detail="해당 닉네임은 이미 존재합니다.")
+    user["nickname"] = nickname
+    # 2. 비밀번호 변경이 요청된 경우 -- 회원가입 로직과 동일함.
+    if password:
+        validate_password(password)
+        user["hashed_password"] = hash_password(password)
+    # 3. 이미지 변경이 요청된 경우 -- 회원가입 로직과 동일함.
+    if profile_image:
+        if profile_image.content_type not in ALLOWED_TYPES:
+            raise HTTPException(415, "지원하지 않는 이미지 파일 형식입니다. ")
+        #TODO : 파일 저장 및 이미지 크기 확인 로직
+        await validate_image_size(profile_image)
+        profile_image_url = f"/uploads/{profile_image.filename}"
+        user["profile_image_url"] = profile_image_url
+    # 4. 프로필 수정 시간 DB에 업데이트
+    user["users_modified_time"] = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
+
+    return {
+        "status": "success",
+        "message": "프로필 수정이 완료되었습니다.",
+        "data": {
+            "user_id": user["user_id"],
+            "email_address" : user["email_address"],
+            "nickname": user["nickname"],
+            "profile_image_url": user["profile_image_url"],
+            "users_created_time": user["users_created_time"],
+            "users_modified_time": user["users_modified_time"]
+        }
+    }
