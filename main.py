@@ -1,6 +1,6 @@
 import re
 from typing import Annotated
-from fastapi import FastAPI, HTTPException, Form, UploadFile, File, Depends, status
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File, Depends
 from pydantic import EmailStr
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
@@ -77,6 +77,21 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, os.getenv("SECRET_KEY"), algorithm=os.getenv("ALGORITHM"))
 
+#----- DB에서 user_id를 활용하여 사용자 찾기(코드 리뷰 반영) ---------
+def find_user_by_id(user_id: str) -> dict | None:
+    for user in demo_db:
+        if user["user_id"] == user_id:
+            return user
+    return None
+
+#----- DB에서 email_address를 활용하여 사용자 찾기(코드 리뷰 반영) ---------
+def find_user_by_email(email: str) -> dict | None:
+    """demo_db에서 email로 사용자를 조회합니다."""
+    for user in demo_db:
+        if user["email_address"] == email:
+            return user
+    return None
+
 #----- Oauth 2.0 Bearer 선언 & 토큰 디코딩 및 로그인 인증 --------- TODO : 추후 인증 미들웨어로 따로 분리 해야함!!
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 def auth_user_with_token_decoding(token: str = Depends(oauth2_scheme)):
@@ -99,14 +114,8 @@ def auth_user_with_token_decoding(token: str = Depends(oauth2_scheme)):
     if user_id is None:
         raise HTTPException(status_code=401, detail="토큰 인증 정보가 유효하지 않습니다. ")
 
-    for i in demo_db:
-        if i["user_id"] == user_id:
-            user_info = i
-            break
-    if user_info is None:
-        raise HTTPException(status_code=404, detail="일치하는 유저 정보가 없습니다.")
+    return find_user_by_id(user_id)
 
-    return user_info
 
 # ----- 첫번째. 회원 가입 메서드 시작
 @app.post("/users")
@@ -264,5 +273,43 @@ async def patch_users_my_page(
             "profile_image_url": user["profile_image_url"],
             "users_created_time": user["users_created_time"],
             "users_modified_time": user["users_modified_time"]
+        }
+    }
+
+# ----- 다섯번째, 내 프로필 삭제 메서드 구현
+@app.delete("/users/my-page")
+async def delete_users_my_page(
+        user: dict = Depends(auth_user_with_token_decoding)
+):
+    # 데모 db에서 현재 사용자 제거
+    for i, j in enumerate(demo_db):
+        if j["user_id"] == user["user_id"]:
+            demo_db.remove(user)
+            break
+
+    return {
+        "status": "success",
+        "message": "유저가 탈퇴처리 되었습니다.",
+        "user_id": user["user_id"],
+        "data": {
+            "user_id": user["user_id"]
+        }
+    }
+
+# ----- 여섯번째, 다른 사용자의 프로필 조회 메서드 구현
+@app.get("/users/{user_id}")
+async def get_users_user_id(user_id : str):
+    #로그인 인증 함수와 동일한 로직 적용
+    user = find_user_by_id(user_id)
+
+    return {
+        "status": "success",
+        "message": "요청한 회원 프로필 정보 조회에 성공했습니다.",
+        "data": {
+            "user_id": user["user_id"],
+            "email_address": user["email_address"],
+            "nickname": user["nickname"],
+            "profile_image_url": user["profile_image_url"],
+            "users_created_time": user["users_created_time"]
         }
     }
