@@ -2,16 +2,18 @@ import os
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
-from database import find_user_by_id  # database.py에서 임포트
+
+from utils.data_validator import validate_env
+from database import find_user_by_id
 
 load_dotenv()
 
-# ----- 설정 및 상수 -----------------------------------------
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
+# ----- 설정 및 상수 (환경변수 검증 로직 추가. 코드 리뷰 반영)-----------------------
+SECRET_KEY = validate_env("SECRET_KEY", os.getenv("SECRET_KEY"))
+ALGORITHM = validate_env("ALGORITHM", os.getenv("ALGORITHM"))
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
 
@@ -23,7 +25,6 @@ def hash_password(password: str) -> str:
 # 2. 비밀번호 검증
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
-
 # ----- 토큰 생성 함수 ---------------------------------------
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()

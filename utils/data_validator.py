@@ -1,27 +1,35 @@
+import os
 import re
 from fastapi import HTTPException, UploadFile
 
+#----- 환경 변수 검증 ----------------------------------------------------
+def validate_env(name: str, value):
+    if value is None:
+        raise RuntimeError(f"{name} 환경변수가 설정되지 않았습니다.")
+    return value
+
 #----- 정규식, 파일 확장자 패턴 --------------------------------------
-nickname_pattern = "^[a-zA-Z0-9가-힣].{5,10}$"
+nickname_pattern = "^[a-zA-Z0-9가-힣]{6,11}$" # --- 코드 리뷰 반영
 password_pattern = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*+=-]).{5,20}$"
-allowed_image_type = {"image/jpg", "image/png", "image/tiff", "image/bmp", "image/gif"}
+allowed_image_type = {"image/jpeg", "image/png", "image/tiff", "image/bmp", "image/gif"}
 max_file_size = 10 * 1024 * 1024  # 10MB
 
-
-#----- 비밀번호 규칙 -------------------------------------------
+#----- 닉네임 규칙 -------------------------------------------
 def validate_nickname(nickname: str):
     if not re.match(nickname_pattern, nickname):
         raise HTTPException(
             status_code=422,
             detail="닉네임은 5~10자 길이를 준수해야하며, 숫자, 영문, 한글만 사용 가능합니다."
         )
-#----- 닉네임 규칙 -------------------------------------------
+
+#----- 비밀번호 규칙 -------------------------------------------
 def validate_password(password: str):
     if not re.match(password_pattern, password):
         raise HTTPException(
             status_code=422,
             detail="비밀번호는 5~20자, 숫자/영문 대소문자/특수문자를 포함해야 합니다."
         )
+
 #----- 이미지 파일 용량, 형식 검증 (I/O Bound 이기 때문에 async)----------------------------------
 async def validate_and_process_image(profile_image: UploadFile) -> str:
     # 이미지 형식 검증

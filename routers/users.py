@@ -1,10 +1,10 @@
+from datetime import datetime, timedelta, timezone
+from pydantic import EmailStr
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
-from pydantic import EmailStr
-from datetime import datetime, timedelta, timezone
 
 # 리팩토링한 utils 모듈 불러오기
-from database import demo_db, generate_user_id, find_user_by_id
+from database import demo_db, generate_user_id, find_user_by_id, find_user_by_email
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user, REFRESH_TOKEN_EXPIRE_DAYS, ACCESS_TOKEN_EXPIRE_MINUTES
 from utils.data_validator import validate_nickname, validate_password, validate_and_process_image
 
@@ -60,34 +60,48 @@ async def post_users(
         }
     }
 
-
 # 2. 로그인 (토큰 발급) 메서드 시작
+max_attempts = 5
 login_attempts = {}
-MAX_ATTEMPTS = 5
-
+login_block_ttl = timedelta(minutes=1)
 @router.post("/auth/token")
 async def post_auth_token(
         email_address: Annotated[EmailStr, Form()],
         password: Annotated[str, Form()],
 ):
-    # 이메일 사전 등록 여부 확인
-    user = None
-    for i in demo_db:
-        if i["email_address"] == email_address:
-            user = i
-            break
+    # 이메일 사전 등록 여부 확인 --- 코드 리뷰 반영하여 for문에서 함수 형태로 변경
+    user = find_user_by_email(str(email_address))
     if user is None:
         raise HTTPException(status_code=401, detail="일치하는 아이디(이메일) 정보가 없습니다.")
-    # 이메일 사전 등록 아닐 경우, 로그인 횟수 겸증
-    attempts = login_attempts.get(email_address, 0)
-    if attempts >= MAX_ATTEMPTS:
-        raise HTTPException(status_code=429, detail="5회 이상 로그인에 실패하였습니다.")
-    # 아직 5회 이하일 경우, 비밀번호 해시갑 검증, 틀리면 횟수 증가
+    # 해당 계정 로그인 시도 횟수 추출. 시도한 적 없을 경우 None 반환
+    attempts = login_attempts.get(email_address)
+    if attempts is not None:
+        elapsed_time = datetime.now(timezone.utc) - attempts["last_attempt"]
+        if elapsed_time > login_block_ttl:
+            del login_attempts[email_address]
+            attempts = None
+    # 로그인 횟수 5회 초과 여부 확인
+    if attempts and attempts["login_count"] >= max_attempts:
+        raise HTTPException(status_code=429, detail="로그인 시도 횟수 초과했습니다. 1분 후 다시 시도하세요.")
+    # 비밀번호 해시값 비교 검증, 틀렸을 때
     if not verify_password(password, user["hashed_password"]):
-        login_attempts[email_address] = attempts + 1
-        raise HTTPException(status_code=401, detail="비밀번호가 맞지 않습니다.")
-    # 5회 이내 비밀번호 해시값 검증 성공, 횟수 초기화 및 토큰 생성
-    login_attempts[email_address] = 0
+        # 처음 로그인 시도했을 경우
+        if not attempts:
+            login_attempts[email_address] = {
+                "login_count": 1,
+                "last_attempt": datetime.now(timezone.utc)
+            }
+        # 이미 시도한 적 있는 경우
+        else:
+            attempts["login_count"] += 1
+            # 시도 횟수 5회 초과
+            if attempts["login_count"] == max_attempts:
+                attempts["last_attempt"] = datetime.now(timezone.utc)
+        raise HTTPException(status_code=401, detail="비밀번호가 틀렸습니다.")
+    # 5회 안에 로그인 성공, 로그인 시도 횟수 초기화
+    if email_address in login_attempts:
+        del login_attempts[email_address]
+
     access_token = create_access_token(
         data={"sub": user["user_id"], "type": "access"},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -146,7 +160,10 @@ async def patch_users_my_page(
         # 본인 닉네임 제외하고 중복 검사
         if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in demo_db):
             raise HTTPException(status_code=409, detail="해당 닉네임은 이미 존재합니다.")
-        user["nickname"] = nickname
+        # 중복 되는 닉네임 없음 확인, 닉네임 수정 --- 코드 리뷰 반영
+        for i, u in enumerate(demo_db):
+            if u["user_id"] == user["user_id"]:
+                demo_db[i]["nickname"] = nickname
     # 비밀번호 변경 요청된 경우 (회원 가입과 동일)
     if password:
         validate_password(password)
