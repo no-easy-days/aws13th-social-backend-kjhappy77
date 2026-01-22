@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
 
 from database import generate_post_id, load_posts, save_posts
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user, REFRESH_TOKEN_EXPIRE_DAYS, ACCESS_TOKEN_EXPIRE_MINUTES
-from utils.data_validator import validate_and_process_image
+from utils.data_validator import validate_and_process_image, sanitize_text
 
 router = APIRouter()
 
@@ -16,7 +16,10 @@ async def post_posts(
         contents_image : Annotated[UploadFile | None, File()] = None,
         user: dict = Depends(get_current_user)
 ):
-    posts_json = load_posts()
+    # 코드 리뷰 반영 ------------- XSS 방지
+    safe_title = sanitize_text(title)
+    safe_contents = sanitize_text(contents)
+    posts_list = load_posts()
     # 게시물에 첨부할 이미지 검증
     contents_image_url = None
     if contents_image:
@@ -27,22 +30,22 @@ async def post_posts(
     posts_created_time = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
     new_post = {
         "post_id": post_id,
-        "title": title,
-        "contents": contents,
+        "title": safe_title,
+        "contents": safe_contents,
         "contents_image_url": contents_image_url,
         "author_id": user["user_id"],  # ----- 코드리뷰 반영, 추후 작성자 정보 반환 필요함
         "posts_created_time": posts_created_time,
         "posts_modified_time": None
     }
-    posts_json.append(new_post)
-    save_posts(posts_json)
+    posts_list.append(new_post)
+    save_posts(posts_list)
     return {
         "status" : "success",
         "message" : "게시글 작성이 완료되었습니다.",
         "data" : {
             "post_id": post_id,
-            "title" : title,
-            "contents" : contents,
+            "title" : safe_title,
+            "contents" : safe_contents,
             "contents_image_url": contents_image_url,
             "author" : {
                 "user_id" : user["user_id"],

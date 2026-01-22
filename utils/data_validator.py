@@ -1,22 +1,11 @@
 import os
+import html
 import re
 from fastapi import HTTPException, UploadFile
-from pydantic import BaseModel, Field
 
-#---- 게시글 글자수 제한 두기 위해 BaseModel 선언
-class PostCreate(BaseModel):
-    title: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="게시글 제목"
-    )
-    content: str = Field(
-        ...,
-        min_length=1,
-        max_length=1000,
-        description="게시글 본문"
-    )
+#----- 코드리뷰 반영, XSS 방지 -------------------------------------------
+def sanitize_text(text: str) -> str:
+    return html.escape(text)
 
 #----- 환경 변수 검증 ----------------------------------------------------
 def validate_env(name: str, value):
