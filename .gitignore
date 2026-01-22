@@ -250,6 +250,9 @@ $RECYCLE.BIN/
 #키 값 방지 -- 2026.01.15
 *.env
 
+#Data 값 방지 -- 2026.01.22
+data/*.json
+
 #템플릿 추가 -- 2026.01.15
 .github/PULL_REQUEST_TEMPLATE.md
 

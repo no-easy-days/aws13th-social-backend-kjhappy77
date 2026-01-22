@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
 
 # 리팩토링한 utils 모듈 불러오기
-from database import demo_db_users, generate_user_id, find_user_by_id, find_user_by_email
+from database import generate_user_id, find_user_by_id, find_user_by_email, load_users, save_users
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user, REFRESH_TOKEN_EXPIRE_DAYS, ACCESS_TOKEN_EXPIRE_MINUTES
 from utils.data_validator import validate_nickname, validate_password, validate_and_process_image
 
@@ -19,8 +19,10 @@ async def post_users(
         nickname: Annotated[str, Form()],
         profile_image: Annotated[UploadFile | None, File()] = None
 ):
+    # json 파일에서 users 딕셔너리 불러오기 (추후 DB 연동으로 변경)
+    users_json = load_users()
     # 이메일 중복 확인
-    if any(user["email_address"] == email_address for user in demo_db_users):
+    if any(user["email_address"] == email_address for user in users_json):
         raise HTTPException(status_code=409, detail="해당 이메일은 이미 등록되어 있습니다.")
     # 비밀번호 정규식 패턴 검증
     validate_password(password)
@@ -29,7 +31,7 @@ async def post_users(
     # 닉네임 정규식 패턴 검증
     validate_nickname(nickname)
     # 닉네임 중복 확인
-    if any(user["nickname"] == nickname for user in demo_db_users):
+    if any(user["nickname"] == nickname for user in users_json):
         raise HTTPException(status_code=409, detail="해당 닉네임은 이미 등록되어 있습니다.")
     # 프로필 이미지 검증
     profile_image_url = None
@@ -39,8 +41,8 @@ async def post_users(
     user_id = generate_user_id()
     # ----- 코드 리뷰 반영, 게시물 생성 시간 통일
     users_created_time = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
-    # DB 저장 ----------------------- 지금은 임시 리스트 DB
-    demo_db_users.append({
+    # 등록할 유저 정보 딕셔너리 객체 생성 및 JSON 파일에 저장
+    new_user = {
         "user_id": user_id,
         "email_address": email_address,
         "hashed_password": hashed_password,
@@ -48,7 +50,10 @@ async def post_users(
         "profile_image_url": profile_image_url,
         "users_created_time": users_created_time,
         "users_modified_time": None
-    })
+    }
+    users_json.append(new_user)
+    save_users(users_json)
+
     return {
         "status": "success",
         "message": "회원가입이 정상적으로 처리되었습니다.",
@@ -152,6 +157,7 @@ async def patch_users_my_page(
         profile_image: Annotated[UploadFile | None, File()] = None,
         user: dict = Depends(get_current_user)
 ):
+    users_json = load_users()
     # 3가지 중 최소 1개 요청 여부 확인
     if not any([nickname, password, profile_image]):
         raise HTTPException(status_code=400, detail="수정할 정보를 입력해주세요.")
@@ -160,12 +166,13 @@ async def patch_users_my_page(
         # 닉네임 정규식 패턴 검증
         validate_nickname(nickname)
         # 본인 닉네임 제외하고 중복 검사
-        if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in demo_db_users):
+        if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in users_json):
             raise HTTPException(status_code=409, detail="해당 닉네임은 이미 존재합니다.")
         # 중복 되는 닉네임 없음 확인, 닉네임 수정 --- 코드 리뷰 반영
-        for i, u in enumerate(demo_db_users):
+        for i, u in enumerate(users_json):
             if u["user_id"] == user["user_id"]:
-                demo_db_users[i]["nickname"] = nickname
+                users_json[i]["nickname"] = nickname
+                break
     # 비밀번호 변경 요청된 경우 (회원 가입과 동일)
     if password:
         validate_password(password)
@@ -190,10 +197,18 @@ async def patch_users_my_page(
 # 5. 내 프로필 삭제 메서드 구현
 @router.delete("/users/my-page")
 async def delete_users_my_page(
+        password: Annotated[str, Form()],
         user: dict = Depends(get_current_user)
 ):
-    if user in demo_db_users:
-        demo_db_users.remove(user)
+    users_json = load_users()
+    # ----- 코드 리뷰 반영, 비밀번호 재검증 로직 추가
+    if not verify_password(password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="패스워드가 일치하지 않습니다. ")
+    # ----- 코드 리뷰 반영, user_id 기준으로 찾는 로직 추가
+    for i, u in enumerate(users_json):
+        if u["user_id"] == user["user_id"]:
+            users_json.pop(i)
+            break
     return {
         "status": "success",
         "message": "유저가 탈퇴처리 되었습니다.",
