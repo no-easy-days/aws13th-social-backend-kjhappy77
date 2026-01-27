@@ -55,3 +55,54 @@ async def post_posts(
             "posts_created_time": posts_created_time,
         }
     }
+
+# 2. 게시글 수정 메서드 시작
+@router.patch("/posts/{post_id}")
+async def patch_posts(
+        post_id: str,
+        title: Annotated[str | None, Form()] = None,
+        contents : Annotated[str | None, Form()] = None,
+        contents_image : Annotated[UploadFile | None, File()] = None
+):
+    posts_json_path = load_posts()
+    # 3가지 중 최소 1개 요청 여부 확인
+    if not any([title, contents, contents_image]):
+        raise HTTPException(status_code=400, detail="수정할 정보를 입력해주세요.")
+    # 대상 게시물 post_id값 바탕으로 찾기
+    target_post = None
+    for post in posts_json_path:
+        if post["post_id"] == post_id:
+            target_post = post
+            break
+    if not target_post:
+        raise HTTPException(status_code=404, detail="대상 게시물을 찾을 수 없습니다.")
+    # 제목(title) 변경 요청된 경우, 길이 제한
+    if title is not None:
+        if len(title) > 100:
+            raise HTTPException(status_code=400, detail="제목이 너무 깁니다.")
+        target_post["title"] = title
+    # 내용(contents) 변경 요청된 경우, 길이 제한
+    if contents is not None:
+        if len(contents) > 5000:
+            raise HTTPException(status_code=400, detail="게시글 본문이 너무 깁니다.")
+    # 이미지 변경 요청된 경우
+    if contents_image:
+        contents_image_url = await validate_and_process_image(contents_image)
+        with open(contents_image_url, "wb") as f:
+            f.write(await contents_image.read())
+            target_post["contents_image"] = contents_image_url
+    # 게시물에 첨부할 이미지 검증
+    target_post["posts_modified_time"] = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
+    save_posts(posts_json_path)
+    return {
+        "status" : "success",
+        "message" : "게시글 수정이 완료되었습니다.",
+        "data" : {
+            "post_id": target_post["post_id"],
+            "title" : target_post["title"],
+            "contents" : target_post["contents"],
+            "contents_image_url": target_post["contents_image_url"]
+        },
+        "posts_created_time": target_post["posts_created_time"],
+        "posts_modified_time" : target_post["posts_modified_time"]
+    }

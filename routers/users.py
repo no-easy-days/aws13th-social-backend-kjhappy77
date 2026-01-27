@@ -155,7 +155,7 @@ async def patch_users_my_page(
         nickname: Annotated[str | None, Form()] = None,
         password: Annotated[str | None, Form()] = None,
         profile_image: Annotated[UploadFile | None, File()] = None,
-        user: dict = Depends(get_current_user)
+        target_user: dict = Depends(get_current_user)
 ):
     users_json_path = load_users()
     # 3가지 중 최소 1개 요청 여부 확인
@@ -166,43 +166,35 @@ async def patch_users_my_page(
         # 닉네임 정규식 패턴 검증
         validate_nickname(nickname)
         # 본인 닉네임 제외하고 중복 검사
-        if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in users_json_path):
+        if any(i["nickname"] == nickname and i["user_id"] != target_user["user_id"] for i in users_json_path):
             raise HTTPException(status_code=409, detail="해당 닉네임은 이미 존재합니다.")
         # 중복 되는 닉네임 없음 확인, 닉네임 수정 --- 코드 리뷰 반영
         for i, u in enumerate(users_json_path):
-            if u["user_id"] == user["user_id"]:
+            if u["user_id"] == target_user["user_id"]:
                 users_json_path[i]["nickname"] = nickname
                 save_users(users_json_path)
                 break
     # 비밀번호 변경 요청된 경우 (회원 가입과 동일)
     if password:
         validate_password(password)
-        # 코드 리뷰 반영, user 찾는 로직 추가
-        target_user = None
-        for u in users_json_path:
-            if u["user_id"] == user["user_id"]:
-                target_user = u
-                break
-        if not target_user:
-            raise HTTPException(status_code=404, detail="해당 유저가 없습니다.")
         target_user["hashed_password"] = hash_password(password)
         save_users(users_json_path)
     # 이미지 변경 요청된 경우 (회원 가입과 동일)
     if profile_image:
-        user["profile_image_url"] = await validate_and_process_image(profile_image)   # 프로필 수정 시간 DB에 업데이트
+        target_user["profile_image_url"] = await validate_and_process_image(profile_image)   # 프로필 수정 시간 DB에 업데이트
         save_users(users_json_path)
-    user["users_modified_time"] = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
+    target_user["users_modified_time"] = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
     save_users(users_json_path)
     return {
         "status": "success",
         "message": "프로필 수정이 완료되었습니다.",
         "data": {
-            "user_id": user["user_id"],
-            "email_address" : user["email_address"],
-            "nickname": user["nickname"],
-            "profile_image_url": user["profile_image_url"],
-            "users_created_time": user["users_created_time"],
-            "users_modified_time": user["users_modified_time"]
+            "user_id": target_user["user_id"],
+            "email_address" : target_user["email_address"],
+            "nickname": target_user["nickname"],
+            "profile_image_url": target_user["profile_image_url"],
+            "users_created_time": target_user["users_created_time"],
+            "users_modified_time": target_user["users_modified_time"]
         }
     }
 
