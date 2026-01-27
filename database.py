@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+import pymysql
 from dotenv import load_dotenv
 
 #----- 코드리뷰 반영, 안전한 파일 경로 생성 ----------------------------
@@ -12,6 +13,31 @@ def path_check(base_dir: str, filename: str) -> str:
     if os.path.commonpath([base_dir_real, target_path]) != base_dir_real:
         raise ValueError(f"파일 경로가 이상합니다. : {filename}")
     return target_path
+
+#---- DB 연동 적용 시작.
+load_dotenv()
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+DB_PORT = int(os.getenv("DB_PORT"))
+
+# DB 연결 의존성 함수 (DI)
+def get_db_connection():
+    conn = pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        db=DB_NAME,
+        port=DB_PORT,
+        charset='utf8mb4',
+        cursorclass=pymysql.cursors.DictCursor, # 결과를 딕셔너리로 반환
+        autocommit=False # 트랜잭션 수동 제어
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 #---- .env 참조, json 파일 Path 지정
 load_dotenv()

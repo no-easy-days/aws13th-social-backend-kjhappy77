@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import pymysql.connections
+from database import get_db_connection
 from pydantic import EmailStr
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
@@ -7,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Form, UploadFile, File, Depends
 from database import generate_user_id, find_user_by_id, find_user_by_email, load_users, save_users
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user, REFRESH_TOKEN_EXPIRE_DAYS, ACCESS_TOKEN_EXPIRE_MINUTES
 from utils.data_validator import validate_nickname, validate_password, validate_and_process_image
+from utils.id_generator import generate_new_id
 
 # API Router 선언
 router = APIRouter()
@@ -17,54 +20,78 @@ async def post_users(
         email_address: Annotated[EmailStr, Form()],
         password: Annotated[str, Form()],
         nickname: Annotated[str, Form()],
-        profile_image: Annotated[UploadFile | None, File()] = None
-):
-    # json 파일에서 users 딕셔너리 불러오기 (추후 DB 연동으로 변경)
-    users_json_path = load_users()
-    # 이메일 중복 확인
-    if any(user["email_address"] == email_address for user in users_json_path):
-        raise HTTPException(status_code=409, detail="해당 이메일은 이미 등록되어 있습니다.")
-    # 비밀번호 정규식 패턴 검증
-    validate_password(password)
-    # 비밀번호 해싱
-    hashed_password = hash_password(password)
-    # 닉네임 정규식 패턴 검증
-    validate_nickname(nickname)
-    # 닉네임 중복 확인
-    if any(user["nickname"] == nickname for user in users_json_path):
-        raise HTTPException(status_code=409, detail="해당 닉네임은 이미 등록되어 있습니다.")
-    # 프로필 이미지 검증
-    profile_image_url = None
-    if profile_image:
-        profile_image_url = await validate_and_process_image(profile_image)
-    # user_id 부여
-    user_id = generate_user_id()
-    # ----- 코드 리뷰 반영, 게시물 생성 시간 통일
-    users_created_time = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
-    # 등록할 유저 정보 딕셔너리 객체 생성 및 JSON 파일에 저장
-    new_user = {
-        "user_id": user_id,
-        "email_address": email_address,
-        "hashed_password": hashed_password,
-        "nickname": nickname,
-        "profile_image_url": profile_image_url,
-        "users_created_time": users_created_time,
-        "users_modified_time": None
-    }
-    users_json_path.append(new_user)
-    save_users(users_json_path)
+        profile_image: Annotated[UploadFile | None, File()] = None,
+        conn: pymysql.connections.Connection = Depends(get_db_connection)
 
-    return {
-        "status": "success",
-        "message": "회원가입이 정상적으로 처리되었습니다.",
-        "data": {
-            "user_id": user_id,
-            "email_address": email_address,
-            "nickname": nickname,
-            "profile_image_url": profile_image_url,
-            "users_created_time": users_created_time
+):
+    # DB 연동 방식으로 변경.
+    cursor = conn.cursor()
+    # json 파일에서 users 딕셔너리 불러오기
+    #users_json_path = load_users() - 미사용
+    # 이메일 중복 확인
+    try:
+        # 이메일, 닉네임 중복확인 (DB 사용)
+        cursor.execute("SELECT user_id FROM users WHERE email_address = %s", (email_address,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="해당 이메일은 이미 등록되어 있습니다.")
+        cursor.execute("SELECT user_id FROM users WHERE nickname = %s", (nickname,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="해당 닉네임은 이미 등록되어 있습니다.")
+#    if any(user["email_address"] == email_address for user in users_json_path):
+#        raise HTTPException(status_code=409, detail="해당 이메일은 이미 등록되어 있습니다.")
+        # 비밀번호 정규식 패턴 검증
+        validate_password(password)
+        # 비밀번호 해싱
+#    hashed_password = hash_password(password)
+    # 닉네임 정규식 패턴 검증
+        validate_nickname(nickname)
+    # 닉네임 중복 확인
+#    if any(user["nickname"] == nickname for user in users_json_path):
+#        raise HTTPException(status_code=409, detail="해당 닉네임은 이미 등록되어 있습니다.")
+        # 프로필 이미지 검증
+        profile_image_url = None
+        if profile_image:
+            profile_image_url = await validate_and_process_image(profile_image)
+        # user_id 부여
+        user_id = generate_user_id(cursor, "users", "user_id", "user")
+        hashed_password = hash_password(password)
+        sql = """
+            INSERT INTO users (user_id, email_address, hashed_password, nickname, profile_image_url)
+            VALUES (%s, %s, %s, %s, %s) \
+        """
+        cursor.execute(sql, (user_id, email_address, hashed_password, nickname, profile_image_url))
+        conn.commit()
+#    user_id = generate_user_id()
+    # ----- 코드 리뷰 반영, 게시물 생성 시간 통일
+#    users_created_time = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
+    # 등록할 유저 정보 딕셔너리 객체 생성 및 JSON 파일에 저장
+#    new_user = {
+#        "user_id": user_id,
+#        "email_address": email_address,
+#        "hashed_password": hashed_password,
+#        "nickname": nickname,
+#        "profile_image_url": profile_image_url,
+#        "users_created_time": users_created_time,
+#        "users_modified_time": None
+#    }
+#    users_json_path.append(new_user)
+#    save_users(users_json_path)
+
+        return {
+            "status": "success",
+            "message": "회원가입이 정상적으로 처리되었습니다.",
+            "data": {
+                "user_id": user_id,
+                "email_address": email_address,
+                "nickname": nickname,
+                "profile_image_url": profile_image_url,
+            }
         }
-    }
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cursor.close()
 
 # 2. 로그인 (토큰 발급) 메서드 시작
 max_attempts = 5
