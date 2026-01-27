@@ -1,0 +1,11 @@
+[
+    {
+        "user_id": "user_1",
+        "email_address": "user@example.com",
+        "hashed_password": "$2b$12$tgOIhWlnOuoMYjR8N4pNE.wcllZDNsQ0eUU0JgQMRkvJU34uf7ByW",
+        "nickname": "string",
+        "profile_image_url": null,
+        "users_created_time": "2026.01.21 - 09:32:38",
+        "users_modified_time": null
+    }
+]

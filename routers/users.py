@@ -202,15 +202,15 @@ async def patch_users_my_page(
 @router.delete("/users/my-page")
 async def delete_users_my_page(
         password: Annotated[str, Form()],
-        user: dict = Depends(get_current_user)
+        target_user: dict = Depends(get_current_user)
 ):
     users_json_path = load_users()
     # ----- 코드 리뷰 반영, 비밀번호 재검증 로직 추가
-    if not verify_password(password, user["hashed_password"]):
+    if not verify_password(password, target_user["hashed_password"]):
         raise HTTPException(status_code=401, detail="패스워드가 일치하지 않습니다. ")
     # ----- 코드 리뷰 반영, user_id 기준으로 찾는 로직 추가
     for i, u in enumerate(users_json_path):
-        if u["user_id"] == user["user_id"]:
+        if u["user_id"] == target_user["user_id"]:
             users_json_path.pop(i)
             break
     save_users(users_json_path)
@@ -218,7 +218,7 @@ async def delete_users_my_page(
         "status": "success",
         "message": "유저가 탈퇴처리 되었습니다.",
         "data": {
-            "user_id" : user["user_id"]
+            "user_id" : target_user["user_id"]
         }
     }
 

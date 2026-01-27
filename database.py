@@ -24,6 +24,8 @@ likes_json_path = path_check(DATA_DIR, os.getenv("LIKES_JSON", "likes.json"))
 #----- 코드리뷰 반영, threading.lock 활용---------------------------
 users_file_lock = threading.Lock()
 posts_file_lock = threading.Lock()
+likes_file_lock = threading.Lock()
+comments_file_lock = threading.Lock()
 
 #----- users.json 불러오기 -------------------------------------------
 def load_users():
@@ -135,3 +137,88 @@ def generate_post_id():
         except (KeyError, IndexError, ValueError, TypeError):
             continue
     return f"post_{max_id + 1}"
+
+#----- comments.json 불러오기 -------------------------------------------
+def load_comments():
+    # 디렉토리 유무 확인 (없으면 mkdir)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with comments_file_lock:
+        try:
+            with open(comments_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except FileNotFoundError:
+            # 파일이 없으면 생성
+            with open(comments_json_path, "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=4)
+            return []
+        except json.JSONDecodeError:
+            # 파일이 깨졌으면 초기화
+            with open(comments_json_path, "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=4)
+            return []
+#----- comments.json 저장하기 -------------------------------------------
+def save_comments(comments: list):
+    # 디렉토리 유무 확인 (없으면 mkdir)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    temp_path = comments_json_path + ".tmp"
+    # 코드리뷰 반영
+    with comments_file_lock:
+        with open(comments_json_path, "w", encoding="utf-8") as f:
+            json.dump(comments, f, ensure_ascii=False, indent=4)
+            f.flush()
+            os.fsync(f.fileno())  # 디스크에 강제 반영
+        os.replace(temp_path, comments_json_path)
+
+#----- likes.json 불러오기 -------------------------------------------
+def load_likes():
+    # 디렉토리 유무 확인 (없으면 mkdir)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with likes_file_lock:
+        try:
+            with open(likes_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except FileNotFoundError:
+            # 파일이 없으면 생성
+            with open(likes_json_path, "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=4)
+            return []
+        except json.JSONDecodeError:
+            # 파일이 깨졌으면 초기화
+            with open(likes_json_path, "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=4)
+            return []
+#----- posts.json 저장하기 -------------------------------------------
+def save_likes(likes: list):
+    # 디렉토리 유무 확인 (없으면 mkdir)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    temp_path = likes_json_path + ".tmp"
+    # 코드리뷰 반영
+    with likes_file_lock:
+        with open(likes_json_path, "w", encoding="utf-8") as f:
+            json.dump(likes, f, ensure_ascii=False, indent=4)
+            f.flush()
+            os.fsync(f.fileno())  # 디스크에 강제 반영
+        os.replace(temp_path, likes_json_path)
+
+#---- comment_id 카운터값 증가 로직 (post_id 로직과 동일함)
+def generate_comment_id():
+    comments = load_comments()
+    max_id = 0
+    for comment in comments:
+        try:
+            c_id = comment["comment_id"]
+            number = int(c_id.split("_")[1])
+            max_id = max(max_id, number)
+        except (KeyError, IndexError, ValueError, TypeError):
+            continue
+    return f"comment_{max_id + 1}"
+
+#---- 좋아요, 댓글 카운트 수 확인
+def get_counts(post_id: str):
+    likes = load_likes()
+    comments = load_comments()
+    likes_count = len([l for l in likes if l["post_id"] == post_id])
+    comments_count = len([c for c in comments if c["post_id"] == post_id])
+    return likes_count, comments_count
