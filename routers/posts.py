@@ -19,7 +19,7 @@ async def post_posts(
     # 코드 리뷰 반영 ------------- XSS 방지
     safe_title = sanitize_text(title)
     safe_contents = sanitize_text(contents)
-    posts_list = load_posts()
+    posts_json_path = load_posts()
     # 게시물에 첨부할 이미지 검증
     contents_image_url = None
     if contents_image:
@@ -37,8 +37,8 @@ async def post_posts(
         "posts_created_time": posts_created_time,
         "posts_modified_time": None
     }
-    posts_list.append(new_post)
-    save_posts(posts_list)
+    posts_json_path.append(new_post)
+    save_posts(posts_json_path)
     return {
         "status" : "success",
         "message" : "게시글 작성이 완료되었습니다.",

@@ -20,9 +20,9 @@ async def post_users(
         profile_image: Annotated[UploadFile | None, File()] = None
 ):
     # json 파일에서 users 딕셔너리 불러오기 (추후 DB 연동으로 변경)
-    users_list = load_users()
+    users_json_path = load_users()
     # 이메일 중복 확인
-    if any(user["email_address"] == email_address for user in users_list):
+    if any(user["email_address"] == email_address for user in users_json_path):
         raise HTTPException(status_code=409, detail="해당 이메일은 이미 등록되어 있습니다.")
     # 비밀번호 정규식 패턴 검증
     validate_password(password)
@@ -31,7 +31,7 @@ async def post_users(
     # 닉네임 정규식 패턴 검증
     validate_nickname(nickname)
     # 닉네임 중복 확인
-    if any(user["nickname"] == nickname for user in users_list):
+    if any(user["nickname"] == nickname for user in users_json_path):
         raise HTTPException(status_code=409, detail="해당 닉네임은 이미 등록되어 있습니다.")
     # 프로필 이미지 검증
     profile_image_url = None
@@ -51,8 +51,8 @@ async def post_users(
         "users_created_time": users_created_time,
         "users_modified_time": None
     }
-    users_list.append(new_user)
-    save_users(users_list)
+    users_json_path.append(new_user)
+    save_users(users_json_path)
 
     return {
         "status": "success",
@@ -157,7 +157,7 @@ async def patch_users_my_page(
         profile_image: Annotated[UploadFile | None, File()] = None,
         user: dict = Depends(get_current_user)
 ):
-    users_list = load_users()
+    users_json_path = load_users()
     # 3가지 중 최소 1개 요청 여부 확인
     if not any([nickname, password, profile_image]):
         raise HTTPException(status_code=400, detail="수정할 정보를 입력해주세요.")
@@ -166,25 +166,33 @@ async def patch_users_my_page(
         # 닉네임 정규식 패턴 검증
         validate_nickname(nickname)
         # 본인 닉네임 제외하고 중복 검사
-        if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in users_list):
+        if any(i["nickname"] == nickname and i["user_id"] != user["user_id"] for i in users_json_path):
             raise HTTPException(status_code=409, detail="해당 닉네임은 이미 존재합니다.")
         # 중복 되는 닉네임 없음 확인, 닉네임 수정 --- 코드 리뷰 반영
-        for i, u in enumerate(users_list):
+        for i, u in enumerate(users_json_path):
             if u["user_id"] == user["user_id"]:
-                users_list[i]["nickname"] = nickname
-                save_users(users_list)
+                users_json_path[i]["nickname"] = nickname
+                save_users(users_json_path)
                 break
     # 비밀번호 변경 요청된 경우 (회원 가입과 동일)
     if password:
         validate_password(password)
-        user["hashed_password"] = hash_password(password)
-        save_users(users_list)
+        # 코드 리뷰 반영, user 찾는 로직 추가
+        target_user = None
+        for u in users_json_path:
+            if u["user_id"] == user["user_id"]:
+                target_user = u
+                break
+        if not target_user:
+            raise HTTPException(status_code=404, detail="해당 유저가 없습니다.")
+        target_user["hashed_password"] = hash_password(password)
+        save_users(users_json_path)
     # 이미지 변경 요청된 경우 (회원 가입과 동일)
     if profile_image:
         user["profile_image_url"] = await validate_and_process_image(profile_image)   # 프로필 수정 시간 DB에 업데이트
-        save_users(users_list)
+        save_users(users_json_path)
     user["users_modified_time"] = datetime.now(timezone.utc).strftime('%Y.%m.%d - %H:%M:%S')
-    save_users(users_list)
+    save_users(users_json_path)
     return {
         "status": "success",
         "message": "프로필 수정이 완료되었습니다.",
@@ -204,16 +212,16 @@ async def delete_users_my_page(
         password: Annotated[str, Form()],
         user: dict = Depends(get_current_user)
 ):
-    users_list = load_users()
+    users_json_path = load_users()
     # ----- 코드 리뷰 반영, 비밀번호 재검증 로직 추가
     if not verify_password(password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="패스워드가 일치하지 않습니다. ")
     # ----- 코드 리뷰 반영, user_id 기준으로 찾는 로직 추가
-    for i, u in enumerate(users_list):
+    for i, u in enumerate(users_json_path):
         if u["user_id"] == user["user_id"]:
-            users_list.pop(i)
+            users_json_path.pop(i)
             break
-    save_users(users_list)
+    save_users(users_json_path)
     return {
         "status": "success",
         "message": "유저가 탈퇴처리 되었습니다.",
